@@ -209,13 +209,32 @@ async function getTrains() {
 async function debugFeed() {
   const res = await fetch('https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs');
   const buf = new Uint8Array(await res.arrayBuffer());
-  const firstBytes = Array.from(buf.slice(0, 20))
-    .map(b => b.toString(16).padStart(2, '0')).join(' ');
+  const feedMsg = parseProto(buf);
+  const dec = new TextDecoder();
+  const allStops = new Set();
+  const allRoutes = new Set();
+
+  for (const entityBytes of (feedMsg[2] || [])) {
+    const entity = parseProto(entityBytes);
+    if (!entity[3] || !entity[3][0]) continue;
+    const tu = parseProto(entity[3][0]);
+    if (tu[1] && tu[1][0]) {
+      const trip = parseProto(tu[1][0]);
+      if (trip[5] && trip[5][0]) allRoutes.add(dec.decode(trip[5][0]));
+    }
+    for (const stuBytes of (tu[2] || [])) {
+      const stu = parseProto(stuBytes);
+      if (stu[2] && stu[2][0]) allStops.add(dec.decode(stu[2][0]));
+    }
+  }
+
+  const stops96 = [...allStops].filter(s => s.includes('12'));
+
   return {
-    status: res.status,
-    contentType: res.headers.get('content-type'),
-    size: buf.length,
-    firstBytes
+    totalStops: allStops.size,
+    routes: [...allRoutes].sort(),
+    stops96,
+    allStops: [...allStops].sort().slice(0, 50)
   };
 }
 
