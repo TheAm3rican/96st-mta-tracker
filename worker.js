@@ -163,8 +163,9 @@ function getTime(eventBytes) {
 }
 
 async function getTrains() {
-  const FEEDS = [
+const FEEDS = [
     { url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs', stopId: '121S' },
+    { url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs', stopId: '120S' },
     { url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace', stopId: 'A11S' },
   ];
   const COLORS = {
