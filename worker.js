@@ -129,6 +129,7 @@ function parseProto(buf, start, end) {
   while (pos < end) {
     let tag;
     [tag, pos] = parseVarint(buf, pos);
+    if (tag === 0) break;
     const fieldNum = tag >>> 3;
     const wireType = tag & 7;
     if (wireType === 0) {
@@ -152,13 +153,22 @@ function parseProto(buf, start, end) {
   return fields;
 }
 
-async function debugFeed() {
-  const res = await fetch('https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs');
+async function fetchFeed(url) {
+  const res = await fetch(url, {
+    headers: { 'Accept-Encoding': 'identity' }
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   const buf = new Uint8Array(await res.arrayBuffer());
+  return { buf, encoding: res.headers.get('content-encoding'), size: buf.length, firstBytes: Array.from(buf.slice(0, 4)).map(b => b.toString(16)).join(' ') };
+}
+
+async function debugFeed() {
+  const { buf, encoding, size, firstBytes } = await fetchFeed('https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs');
   const feedMsg = parseProto(buf);
   const dec = new TextDecoder();
   const stops = new Set();
   const routes = new Set();
+
   for (const entityBytes of (feedMsg[2] || [])) {
     const entity = parseProto(entityBytes);
     if (!entity[3] || !entity[3][0]) continue;
@@ -172,7 +182,16 @@ async function debugFeed() {
       if (stu[2] && stu[2][0]) stops.add(dec.decode(stu[2][0]));
     }
   }
-  return { stops: [...stops].sort(), routes: [...routes].sort() };
+
+  return {
+    encoding,
+    size,
+    firstBytes,
+    topLevelFields: Object.keys(feedMsg),
+    entityCount: (feedMsg[2] || []).length,
+    stops: [...stops].sort(),
+    routes: [...routes].sort()
+  };
 }
 
 async function getTrains() {
@@ -188,9 +207,7 @@ async function getTrains() {
 
   await Promise.all(FEEDS.map(async function(feed) {
     try {
-      const res = await fetch(feed.url);
-      if (!res.ok) return;
-      const buf = new Uint8Array(await res.arrayBuffer());
+      const { buf } = await fetchFeed(feed.url);
       const feedMsg = parseProto(buf);
       for (const entityBytes of (feedMsg[2] || [])) {
         const entity = parseProto(entityBytes);
