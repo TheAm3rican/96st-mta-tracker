@@ -1,0 +1,6 @@
+{
+  "name": "mta-tracker",
+  "dependencies": {
+    "gtfs-realtime-bindings": "^1.20230101.0"
+  }
+}
