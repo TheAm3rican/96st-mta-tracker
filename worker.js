@@ -12,10 +12,7 @@ const HTML = `<!DOCTYPE html>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg: #0d0d0d; --surface: #161616; --border: #252525;
-      --text: #f0f0f0; --muted: #666; --arriving: #4ade80;
-    }
+    :root { --bg: #0d0d0d; --surface: #161616; --border: #252525; --text: #f0f0f0; --muted: #666; --arriving: #4ade80; }
     html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; -webkit-font-smoothing: antialiased; }
     body { display: flex; flex-direction: column; min-height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     header { padding: 28px 20px 0; }
@@ -155,6 +152,29 @@ function parseProto(buf, start, end) {
   return fields;
 }
 
+async function debugFeed() {
+  const res = await fetch('https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs');
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const feedMsg = parseProto(buf);
+  const dec = new TextDecoder();
+  const stops = new Set();
+  const routes = new Set();
+  for (const entityBytes of (feedMsg[2] || [])) {
+    const entity = parseProto(entityBytes);
+    if (!entity[3] || !entity[3][0]) continue;
+    const tu = parseProto(entity[3][0]);
+    if (tu[1] && tu[1][0]) {
+      const trip = parseProto(tu[1][0]);
+      if (trip[5] && trip[5][0]) routes.add(dec.decode(trip[5][0]));
+    }
+    for (const stuBytes of (tu[2] || [])) {
+      const stu = parseProto(stuBytes);
+      if (stu[2] && stu[2][0]) stops.add(dec.decode(stu[2][0]));
+    }
+  }
+  return { stops: [...stops].sort(), routes: [...routes].sort() };
+}
+
 async function getTrains() {
   const FEEDS = [
     { url: 'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct/gtfs', stopId: '121S' },
@@ -209,12 +229,21 @@ async function getTrains() {
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/debug') {
+      const data = await debugFeed();
+      return new Response(JSON.stringify(data, null, 2), {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     if (url.pathname === '/trains') {
       const arrivals = await getTrains();
       return new Response(JSON.stringify({ arrivals, updated: Date.now() }), {
         headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }
       });
     }
+
     return new Response(HTML, {
       headers: { 'Content-Type': 'text/html' }
     });
